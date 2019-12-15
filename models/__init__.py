@@ -1,0 +1,3 @@
+from .instagram import (
+    Instagram
+)
