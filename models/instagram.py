@@ -11,21 +11,15 @@ from .database import DataBase
 from .base import Base
 
 class Instagram(Base):
-	"""docstring for ClassName"""
+
 	def __init__(self, config):
 
-		self.loginText = "Log In"
-		# self.loginText = "登入"
-		self.securityCodeText = "Send Security Code"
-		# self.securityCodeText = "傳送安全碼"
-		self.followText = "Follow"
-		# self.followText = "追蹤"
-		self.followingText = "Following"
-		# self.followingText = "追蹤中"
-		self.cancelFollowText = "Unfollow"
-		# self.cancelFollowText = "取消追蹤"
-		self.error = "Error"
-		# self.error = "錯誤"
+		self.loginText = "Log In" # 登入
+		self.securityCodeText = "Send Security Code" # 傳送安全碼
+		self.followText = "Follow" # 追蹤
+		self.followingText = "Following" # 追蹤中
+		self.cancelFollowText = "Unfollow" # 取消追蹤
+		self.error = "Error" # 錯誤
 		# 資料庫
 		self.dataBase = DataBase(config['DB_HOST'], config['DB_PORT'], config['DB_USERNAME'], config['DB_PASSWORD'])
 		self.dataBase.use_table(config['DB_DATABASE'])
@@ -89,7 +83,7 @@ class Instagram(Base):
 						self.driver.get('https://www.instagram.com/explore/')
 
 	#取得tag列表
-	def getHashTag(self):
+	def getHashTag(self, hashtagsLimit, articleLimit):
 		taglist = []
 		for Number in range(10):
 			for number in range(10):
@@ -99,11 +93,11 @@ class Instagram(Base):
 					tag = element.find_element_by_tag_name("a").text
 					taglist.append(tag)
 
-		# taglist = ['鑫']
-		self._tagListProcess(taglist)
-
+					if len(taglist) >= int(hashtagsLimit):
+						return self._tagListProcess(taglist, articleLimit)
+		
 	#處理tag
-	def _tagListProcess(self, taglist):
+	def _tagListProcess(self, taglist, articleLimit):
 
 		for tag in taglist:
 			count = 0
@@ -124,28 +118,31 @@ class Instagram(Base):
 
 			curTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-			sql = "SELECT * FROM `hashtag` WHERE `hashtagName` = '%s'" % \
-				(tagname)
-			self.dataBase.execution(sql)
+			self.dataBase.table("hashtag")
+
+			self.dataBase.select()
+			self.dataBase.where("hashtagName","=",tagname)
+			self.dataBase.execution()
 			result = self.dataBase.fetch('one')
 			if result == None:
-				sql = "insert into `hashtag` (`hashtagName`,`hashtagTrack`, `updatetime`) values ('%s','%d','%s')" % \
-					(tagname, hashtagTrack, curTime)
-				self.dataBase.execution(sql)
+				self.dataBase.insert(hashtagName=tagname, hashtagTrack=hashtagTrack, updatetime=curTime)
+				self.dataBase.execution()
 				hashtag_id = self.dataBase.getInsterId()
 			else:
+				self.dataBase.update(hashtagTrack=hashtagTrack, updatetime=curTime)
+				self.dataBase.where("hashtagName","=",tagname)
+				self.dataBase.execution()
 				hashtag_id = result[0]
-				sql = "UPDATE `hashtag` SET `hashtagTrack` = '%d', `updatetime` = '%s' WHERE `hashtagName` = '%s'" % \
-					(hashtagTrack, curTime, tagname)
-				self.dataBase.execution(sql)
 
-			sql = "SELECT count(*) FROM `article_tag` WHERE hashtag_id = '%s'" % \
-				(hashtag_id)
-			self.dataBase.execution(sql)
+			self.dataBase.table("article_tag")
+			self.dataBase.select("count(*)")
+			self.dataBase.where("hashtag_id","=",hashtag_id)
+			self.dataBase.execution()
 			count = self.dataBase.fetch('one')
 
+
 			print('hashtag_id:' + str(hashtag_id) + ' hashtagName:' + tagname)
-			if count < 0:
+			if count < articleLimit:
 
 				myli = []
 				pictureLength = hashtagTrack * 60
@@ -164,15 +161,15 @@ class Instagram(Base):
 
 					newmyli = self.removListDuplicate(newmyli)
 
-					if len(newmyli) > 1000:
+					if len(newmyli) > articleLimit:
 						break
-				print(newmyli)
+				# print(newmyli)
 
 				# l2 = ['/p/B5LJ2dygjmh/']
-				self._articleProcess(newmyli)
+				self._articleProcess(newmyli[0:articleLimit])
 
 			else:
-				print("count > 1000")
+				print("count > "+ str(articleLimit))
 
 	# 文章處理
 	def _articleProcess(self, newmyli):
@@ -229,62 +226,61 @@ class Instagram(Base):
 
 				curTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-
-				sql = "SELECT * FROM `user` WHERE userName = '%s'" % \
-					(user)
-				self.dataBase.execution(sql)
+				self.dataBase.table("user")
+				self.dataBase.select()
+				self.dataBase.where("userName","=",user)
+				self.dataBase.execution()
 				result = self.dataBase.fetch('one')
 				if result == None:
-					sql = "insert into `user` (`userName`,`updatetime`) values ('%s','%s')" % \
-						(user, curTime)
-					self.dataBase.execution(sql)
+					self.dataBase.insert(userName=user, updatetime=curTime)
+					self.dataBase.execution()
 					user_id = self.dataBase.getInsterId()
 				else:
 					user_id = result[0]
 
-
-				sql = "SELECT * FROM `article` WHERE url = '%s'" % \
-					(url)
-				self.dataBase.execution(sql)
-				if self.dataBase.fetch('one') == None:
-					sql = "insert into `article` (`user_id`, `url`,`like`, `viewer`, `updatetime`) values ('%s','%s','%d','%d','%s')" % \
-						(user_id, url, like, viewer, curTime)
-					self.dataBase.execution(sql)
+				self.dataBase.table("article")
+				self.dataBase.select()
+				self.dataBase.where("url","=",url)
+				self.dataBase.execution()
+				result = self.dataBase.fetch('one')
+				if result == None:
+					self.dataBase.insert(user_id=user_id, url=url, like=like, viewer=viewer, updatetime=curTime)
+					self.dataBase.execution()
 				else:
-					sql = "UPDATE `article` SET `like` = '%d', `viewer` = '%d', `updatetime` = '%s' WHERE `url` = '%s'" % \
-						(like, viewer, curTime, url)
-					self.dataBase.execution(sql)
+					self.dataBase.update(like=like, viewer=viewer, updatetime=curTime)
+					self.dataBase.where("url","=",url)
+					self.dataBase.execution()
 
-				sql = "SELECT article_id FROM `article` WHERE url = '%s'" % \
-					(url)
-				self.dataBase.execution(sql)
-
+				self.dataBase.select("article_id")
+				self.dataBase.where("url","=",url)
+				self.dataBase.execution()
 				article_id = self.dataBase.fetch('one')
 
-				sql = "DELETE FROM `article_tag` WHERE article_id = '%d'" % \
-					(article_id)
-				self.dataBase.execution(sql)
+				self.dataBase.table("article_tag")
+				self.dataBase.delete()
+				self.dataBase.where("article_id","=",article_id)
+				self.dataBase.execution()
 
 				for tag in taglist:
 
-					sql = "SELECT * FROM `hashtag` WHERE hashtagName = '%s'" % \
-						(tag)
-					self.dataBase.execution(sql)
+					self.dataBase.table("hashtag")
+					self.dataBase.select()
+					self.dataBase.where("hashtagName","=",tag)
+					self.dataBase.execution()
+					result = self.dataBase.fetch('one')
 
-					if self.dataBase.fetch('one') == None:
-						sql = "insert into `hashtag` (`hashtagName`, `hashtagTrack`, `updatetime`) values ('%s','%d','%s')" % \
-							(tag, 0, curTime)
-						self.dataBase.execution(sql)
+					if result == None:
+						self.dataBase.insert(hashtagName=tag, hashtagTrack=0, updatetime=curTime)
+						self.dataBase.execution()
 
-					sql = "SELECT hashtag_id FROM `hashtag` WHERE hashtagName = '%s'" % \
-						(tag)
-					self.dataBase.execution(sql)
-
+					self.dataBase.select("hashtag_id")
+					self.dataBase.where("hashtagName","=",tag)
+					self.dataBase.execution()
 					hashtag_id = self.dataBase.fetch('one')
 
-					sql = "insert into `article_tag` (`article_id`, `hashtag_id`, `updatetime`) values ('%d','%d','%s')" % \
-						(article_id, hashtag_id, curTime)
-					self.dataBase.execution(sql)
+					self.dataBase.table("article_tag")
+					self.dataBase.insert(article_id=article_id, hashtag_id=hashtag_id, updatetime=curTime)
+					self.dataBase.execution()
 
 				# self._tagListProcess(taglist)
 

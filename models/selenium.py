@@ -1,5 +1,4 @@
 import re
-from models import user_agents
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 # available since 2.4.0
